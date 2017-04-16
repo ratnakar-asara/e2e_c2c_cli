@@ -213,9 +213,9 @@ chaincode05Query () {
      sleep 3
      echo "Attempting to Query PEER$PEER ...$(($(date +%s)-starttime)) secs"
      if test $counter -eq 1 ; then
-	peer chaincode query -C $CHANNEL_NAME$counter -n mycc05 -c '{"Args":["get","mycc","mychannel2"]}' >&log.txt
+	peer chaincode query -C $CHANNEL_NAME$counter -n mycc05 -c '{"Args":["query","mycc","mychannel2"]}' >&log.txt
      else
-	peer chaincode query -C $CHANNEL_NAME$counter -n mycc05 -c '{"Args":["get","mycc","mychannel1"]}' >&log.txt 
+	peer chaincode query -C $CHANNEL_NAME$counter -n mycc05 -c '{"Args":["query","mycc","mychannel1"]}' >&log.txt
      fi
      rc=$?
      #test $? -eq 0 && VALUE=$(cat log.txt | awk '/Query Result/ {print $NF}')
@@ -239,15 +239,15 @@ chaincode05Invoke () {
   for counter in 1 2; do
   if test $counter -eq 1 ; then
         if [ -z "$CORE_PEER_TLS_ENABLED" -o "$CORE_PEER_TLS_ENABLED" = "false" ]; then
-		peer chaincode invoke -o orderer0:7050 -C $CHANNEL_NAME$counter -n mycc05 -c '{"Args":["put","mycc","!@#$%^&*()_+~!@#^(*&&^%$^%$%*^%$%#%&^","mychannel2"]}' >&log.txt
+		peer chaincode invoke -o orderer0:7050 -C $CHANNEL_NAME$counter -n mycc05 -c '{"Args":["invoke","mycc","!@#$%^&*()_+~!@#^(*&&^%$^%$%*^%$%#%&^","mychannel2"]}' >&log.txt
 	else
-		peer chaincode invoke -o orderer0:7050  --tls $CORE_PEER_TLS_ENABLED --cafile $ORDERER_CA -C $CHANNEL_NAME$counter -n mycc05 -c '{"Args":["put","mycc","!@#$%^&*()_+~!@#^(*&&^%$^%$%*^%$%#%&^","mychannel2"]}' >&log.txt
+		peer chaincode invoke -o orderer0:7050  --tls $CORE_PEER_TLS_ENABLED --cafile $ORDERER_CA -C $CHANNEL_NAME$counter -n mycc05 -c '{"Args":["invoke","mycc","!@#$%^&*()_+~!@#^(*&&^%$^%$%*^%$%#%&^","mychannel2"]}' >&log.txt
 	fi
   else 
         if [ -z "$CORE_PEER_TLS_ENABLED" -o "$CORE_PEER_TLS_ENABLED" = "false" ]; then
-		peer chaincode invoke -o orderer0:7050 -C $CHANNEL_NAME$counter -n mycc05 -c '{"Args":["put","mycc","!@#$%^&*()_+~!@#^(*&&^%$^%$%*^%$%#%&^","mychannel1"]}' >&log.txt
+		peer chaincode invoke -o orderer0:7050 -C $CHANNEL_NAME$counter -n mycc05 -c '{"Args":["invoke","mycc","!@#$%^&*()_+~!@#^(*&&^%$^%$%*^%$%#%&^","mychannel1"]}' >&log.txt
 	else
-		peer chaincode invoke -o orderer0:7050  --tls $CORE_PEER_TLS_ENABLED --cafile $ORDERER_CA -C $CHANNEL_NAME$counter -n mycc05 -c '{"Args":["put","mycc","!@#$%^&*()_+~!@#^(*&&^%$^%$%*^%$%#%&^","mychannel1"]}' >&log.txt
+		peer chaincode invoke -o orderer0:7050  --tls $CORE_PEER_TLS_ENABLED --cafile $ORDERER_CA -C $CHANNEL_NAME$counter -n mycc05 -c '{"Args":["invoke","mycc","!@#$%^&*()_+~!@#^(*&&^%$^%$%*^%$%#%&^","mychannel1"]}' >&log.txt
 	fi
   fi
 	res=$?

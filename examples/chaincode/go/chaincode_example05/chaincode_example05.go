@@ -40,14 +40,14 @@ func (t *SimpleChaincode) Init(stub shim.ChaincodeStubInterface) pb.Response {
 // Invoke queries another chaincode and updates its own state
 func (t *SimpleChaincode) invoke(stub shim.ChaincodeStubInterface, args []string) pb.Response {
 	fmt.Printf("================ Invoke on chaincode 05\n")
-	if len(args) != 2 {
-		return shim.Error("Incorrect number of arguments. Expecting 2")
+	if len(args) != 3 {
+		return shim.Error("Incorrect number of arguments. Expecting 3")
 	}
 
 	chaincodeURL := args[0]
 	val1 := args[1]
-	val2 := args[2]
-        channelName :=  args[3]
+	val2 := args[1]
+        channelName :=  args[2]
 	fmt.Printf("Channel Name is %s\n", channelName)
 
 	// Invoke on chaincode_example02
