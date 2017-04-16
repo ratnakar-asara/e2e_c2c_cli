@@ -30,7 +30,7 @@ setGlobals () {
 		CORE_PEER_LOCALMSPID="Org1MSP"
 		CORE_PEER_TLS_ROOTCERT_FILE=/opt/gopath/src/github.com/hyperledger/fabric/peer/crypto/peer/peer$1/localMspConfig/cacerts/peerOrg1.pem
 	fi
-	env |grep CORE
+	#env |grep CORE
 }
 
 disableGossip() {
@@ -204,12 +204,12 @@ chaincode05Query () {
   echo "===================== Querying on PEER$PEER on channel '$CHANNEL_NAME$counter'... ===================== "
   
   local rc=1
-  #local starttime=$(date +%s)
+  local starttime=$(date +%s)
 
   # continue to poll
   # we either get a successful response, or reach TIMEOUT
-  #while test "$(($(date +%s)-starttime))" -lt "$TIMEOUT" -a $rc -ne 0
-  #do
+  while test "$(($(date +%s)-starttime))" -lt "$TIMEOUT" -a $rc -ne 0
+  do
      sleep 3
      echo "Attempting to Query PEER$PEER ...$(($(date +%s)-starttime)) secs"
      if test $counter -eq 1 ; then
@@ -218,9 +218,9 @@ chaincode05Query () {
 	peer chaincode query -C $CHANNEL_NAME$counter -n mycc05 -c '{"Args":["query","mycc","mychannel1"]}' >&log.txt
      fi
      rc=$?
-     #test $? -eq 0 && VALUE=$(cat log.txt | awk '/Query Result/ {print $NF}')
-     #test "$VALUE" = "$2" && let rc=0
-  #done
+     test $? -eq 0 && VALUE=$(cat log.txt | awk '/Query Result/ {print $NF}')
+     test "$VALUE" = "RANDOM_STR" && let rc=0
+  done
   echo
   cat log.txt
   if test $rc -eq 0 ; then
@@ -239,15 +239,20 @@ chaincode05Invoke () {
   for counter in 1 2; do
   if test $counter -eq 1 ; then
         if [ -z "$CORE_PEER_TLS_ENABLED" -o "$CORE_PEER_TLS_ENABLED" = "false" ]; then
-		peer chaincode invoke -o orderer0:7050 -C $CHANNEL_NAME$counter -n mycc05 -c '{"Args":["invoke","mycc","!@#$%^&*()_+~!@#^(*&&^%$^%$%*^%$%#%&^","mychannel2"]}' >&log.txt
+		#peer chaincode invoke -o orderer0:7050 -C $CHANNEL_NAME$counter -n mycc05 -c '{"Args":["invoke","mycc","!@#$%^&*()_+~!@#^(*&&^%$^%$%*^%$%#%&^","mychannel2"]}' >&log.txt
+                peer chaincode invoke -o orderer:7050  -C $CHANNEL_NAME$cOUNTER -n mycc05 -c "{\"Args\":[\"invoke\", \"mycc\",\"$RANDOM_STR\", \"mychannel2\"]}" >&log.txt
+
 	else
-		peer chaincode invoke -o orderer0:7050  --tls $CORE_PEER_TLS_ENABLED --cafile $ORDERER_CA -C $CHANNEL_NAME$counter -n mycc05 -c '{"Args":["invoke","mycc","!@#$%^&*()_+~!@#^(*&&^%$^%$%*^%$%#%&^","mychannel2"]}' >&log.txt
+		#peer chaincode invoke -o orderer0:7050  --tls $CORE_PEER_TLS_ENABLED --cafile $ORDERER_CA -C $CHANNEL_NAME$counter -n mycc05 -c '{"Args":["invoke","mycc","!@#$%^&*()_+~!@#^(*&&^%$^%$%*^%$%#%&^","mychannel2"]}' >&log.txt
+		peer chaincode invoke -o orderer0:7050  --tls $CORE_PEER_TLS_ENABLED --cafile $ORDERER_CA -C $CHANNEL_NAME$counter -n mycc05 -c "{\"Args\":[\"invoke\", \"mycc\",\"$RANDOM_STR\", \"mychannel2\"]}" >&log.txt
 	fi
   else 
         if [ -z "$CORE_PEER_TLS_ENABLED" -o "$CORE_PEER_TLS_ENABLED" = "false" ]; then
-		peer chaincode invoke -o orderer0:7050 -C $CHANNEL_NAME$counter -n mycc05 -c '{"Args":["invoke","mycc","!@#$%^&*()_+~!@#^(*&&^%$^%$%*^%$%#%&^","mychannel1"]}' >&log.txt
+		#peer chaincode invoke -o orderer0:7050 -C $CHANNEL_NAME$counter -n mycc05 -c '{"Args":["invoke","mycc","!@#$%^&*()_+~!@#^(*&&^%$^%$%*^%$%#%&^","mychannel1"]}' >&log.txt
+		peer chaincode invoke -o orderer0:7050 -C $CHANNEL_NAME$counter -n mycc05 -c "{\"Args\":[\"invoke\", \"mycc\",\"$RANDOM_STR\", \"mychannel1\"]}" >&log.txt
 	else
-		peer chaincode invoke -o orderer0:7050  --tls $CORE_PEER_TLS_ENABLED --cafile $ORDERER_CA -C $CHANNEL_NAME$counter -n mycc05 -c '{"Args":["invoke","mycc","!@#$%^&*()_+~!@#^(*&&^%$^%$%*^%$%#%&^","mychannel1"]}' >&log.txt
+		#peer chaincode invoke -o orderer0:7050  --tls $CORE_PEER_TLS_ENABLED --cafile $ORDERER_CA -C $CHANNEL_NAME$counter -n mycc05 -c "{\"Args\":[\"invoke\", \"mycc\",\"$RANDOM_STR\", \"mychannel1\"]}" >&log.txt
+		peer chaincode invoke -o orderer0:7050  --tls $CORE_PEER_TLS_ENABLED --cafile $ORDERER_CA -C $CHANNEL_NAME$counter -n mycc05 -c "{\"Args\":[\"invoke\", \"mycc\",\"$RANDOM_STR\", \"mychannel1\"]}" >&log.txt
 	fi
   fi
 	res=$?
@@ -291,9 +296,14 @@ chaincodeQuery 1 "1234567890abcdefghijklmnopqrstuvwxyz" "ABCDEFGHIJKLMNOPQRSTUVW
 #Query on chaincode on Peer3/Org1, check if the result is 90
 #chaincodeQuery 3 "1234567890abcdefghijklmnopqrstuvwxyz"
 
-
-chaincode05Invoke 0
-chaincode05Query 3
+max=2
+for (( i=1; i <= $max; ++i ))
+do
+	RANDOM_STR=$(head /dev/urandom | tr -dc A-Za-z0-9 | head -c 128)
+	echo ">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> $RANDOM_STR <<<<<<<<<<<<<<<<<<<<<<<<<<"
+	chaincode05Invoke 0
+	chaincode05Query 3
+done
 
 echo
 echo "===================== All GOOD, End-2-End execution completed ===================== "

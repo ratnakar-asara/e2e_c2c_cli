@@ -204,7 +204,7 @@ services:
 
     working_dir: /opt/gopath/src/github.com/hyperledger/fabric/peer
     command: /bin/bash -c './scripts/script.sh ${CHANNEL_NAME}; '
-    #command: /bin/bash
+    #command: /bin/bash -c 'sleep 10000'
     volumes:
         - /var/run/:/host/var/run/
         - ./examples/:/opt/gopath/src/github.com/hyperledger/fabric/examples/
