@@ -2,7 +2,7 @@
 
 CHANNEL_NAME="$1"
 : ${CHANNEL_NAME:="mychannel"}
-: ${TIMEOUT:="60"}
+: ${TIMEOUT:="40"}
 COUNTER=0
 MAX_RETRY=5
 ORDERER_CA=/opt/gopath/src/github.com/hyperledger/fabric/peer/crypto/orderer/localMspConfig/cacerts/ordererOrg0.pem
@@ -31,6 +31,20 @@ setGlobals () {
 		CORE_PEER_TLS_ROOTCERT_FILE=/opt/gopath/src/github.com/hyperledger/fabric/peer/crypto/peer/peer$1/localMspConfig/cacerts/peerOrg1.pem
 	fi
 	env |grep CORE
+}
+
+disableGossip() {
+	for counter in 0 1 2 3 ; do
+		setGlobals $counter
+		peer logging setlevel gossip/comm#-1 error
+		peer logging setlevel cauthdsl error
+		peer logging setlevel peer/gossip/mcs error
+		peer logging setlevel gossip/discovery#peer0:7051 error
+		peer logging setlevel gossip/pull#peer0:7051 error
+		peer logging setlevel gossip/gossip#peer0:7051 error
+		peer logging setlevel gossip/election error
+		peer logging setlevel common/policies error
+	done
 }
 
 createChannel() {
@@ -139,7 +153,7 @@ chaincodeQuery () {
   do
      sleep 3
      echo "Attempting to Query PEER$PEER ...$(($(date +%s)-starttime)) secs"
-     peer chaincode query -C $CHANNEL_NAME$counter -n mycc -c '{"Args":["query","a"]}' >&log.txt
+     peer chaincode query -C $CHANNEL_NAME$counter -n mycc -c '{"Args":["get","a"]}' >&log.txt
      test $? -eq 0 && VALUE=$(cat log.txt | awk '/Query Result/ {print $NF}')
      test "$VALUE" = "$2" && let rc=0
   done
@@ -151,6 +165,7 @@ chaincodeQuery () {
 	echo "!!!!!!!!!!!!!!! Query result on PEER$PEER is INVALID !!!!!!!!!!!!!!!!"
         echo "================== ERROR !!! FAILED to execute End-2-End Scenario =================="
 	echo
+	exit 1
   fi
   done
 }
@@ -159,9 +174,20 @@ chaincodeInvoke () {
         PEER=$1
   for counter in 1 2; do 
         if [ -z "$CORE_PEER_TLS_ENABLED" -o "$CORE_PEER_TLS_ENABLED" = "false" ]; then
-		peer chaincode invoke -o orderer0:7050 -C $CHANNEL_NAME$counter -n mycc -c '{"Args":["invoke","a","b","10"]}' >&log.txt
+		peer chaincode invoke -o orderer0:7050 -C $CHANNEL_NAME$counter -n mycc -c '{"Args":["put","a","1234567890abcdefghijklmnopqrstuvwxyz"]}' >&log.txt
 	else
-		peer chaincode invoke -o orderer0:7050  --tls $CORE_PEER_TLS_ENABLED --cafile $ORDERER_CA -C $CHANNEL_NAME$counter -n mycc -c '{"Args":["invoke","a","b","10"]}' >&log.txt
+		peer chaincode invoke -o orderer0:7050  --tls $CORE_PEER_TLS_ENABLED --cafile $ORDERER_CA -C $CHANNEL_NAME$counter -n mycc -c '{"Args":["put","a","1234567890abcdefghijklmnopqrstuvwxyz"]}' >&log.txt
+	fi
+	res=$?
+	cat log.txt
+	verifyResult $res "Invoke execution on PEER$PEER failed "
+	echo "===================== Invoke transaction on PEER$PEER on channel '$CHANNEL_NAME$counter' is successful ===================== "
+	echo
+
+        if [ -z "$CORE_PEER_TLS_ENABLED" -o "$CORE_PEER_TLS_ENABLED" = "false" ]; then
+		peer chaincode invoke -o orderer0:7050 -C $CHANNEL_NAME$counter -n mycc -c '{"Args":["put","b","ABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890"]}' >&log.txt
+	else
+		peer chaincode invoke -o orderer0:7050  --tls $CORE_PEER_TLS_ENABLED --cafile $ORDERER_CA -C $CHANNEL_NAME$counter -n mycc -c '{"Args":["put","b","ABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890"]}' >&log.txt
 	fi
 	res=$?
 	cat log.txt
@@ -173,27 +199,28 @@ chaincodeInvoke () {
 
 chaincode05Query () {
   PEER=$1
+  setGlobals $PEER
   for counter in 1 2; do 
   echo "===================== Querying on PEER$PEER on channel '$CHANNEL_NAME$counter'... ===================== "
-  setGlobals $PEER
+  
   local rc=1
-  local starttime=$(date +%s)
+  #local starttime=$(date +%s)
 
   # continue to poll
   # we either get a successful response, or reach TIMEOUT
-  while test "$(($(date +%s)-starttime))" -lt "$TIMEOUT" -a $rc -ne 0
-  do
+  #while test "$(($(date +%s)-starttime))" -lt "$TIMEOUT" -a $rc -ne 0
+  #do
      sleep 3
      echo "Attempting to Query PEER$PEER ...$(($(date +%s)-starttime)) secs"
      if test $counter -eq 1 ; then
-	peer chaincode query -C $CHANNEL_NAME$counter -n mycc05 -c '{"Args":["query","mycc","sum","mychannel2"]}' >&log.txt
+	peer chaincode query -C $CHANNEL_NAME$counter -n mycc05 -c '{"Args":["get","mycc","mychannel2"]}' >&log.txt
      else
-	peer chaincode query -C $CHANNEL_NAME$counter -n mycc05 -c '{"Args":["query","mycc","sum","mychannel1"]}' >&log.txt 
+	peer chaincode query -C $CHANNEL_NAME$counter -n mycc05 -c '{"Args":["get","mycc","mychannel1"]}' >&log.txt 
      fi
-     
-     test $? -eq 0 && VALUE=$(cat log.txt | awk '/Query Result/ {print $NF}')
-     test "$VALUE" = "$2" && let rc=0
-  done
+     rc=$?
+     #test $? -eq 0 && VALUE=$(cat log.txt | awk '/Query Result/ {print $NF}')
+     #test "$VALUE" = "$2" && let rc=0
+  #done
   echo
   cat log.txt
   if test $rc -eq 0 ; then
@@ -201,6 +228,7 @@ chaincode05Query () {
   else
 	echo "!!!!!!!!!!!!!!! Query result on PEER$PEER is INVALID !!!!!!!!!!!!!!!!"
         echo "================== ERROR !!! FAILED to execute End-2-End Scenario =================="
+	exit 1
 	echo
   fi
   done
@@ -211,15 +239,15 @@ chaincode05Invoke () {
   for counter in 1 2; do
   if test $counter -eq 1 ; then
         if [ -z "$CORE_PEER_TLS_ENABLED" -o "$CORE_PEER_TLS_ENABLED" = "false" ]; then
-		peer chaincode invoke -o orderer0:7050 -C $CHANNEL_NAME$counter -n mycc05 -c '{"Args":["invoke","mycc","sum","mychannel2"]}' >&log.txt
+		peer chaincode invoke -o orderer0:7050 -C $CHANNEL_NAME$counter -n mycc05 -c '{"Args":["put","mycc","!@#$%^&*()_+~!@#^(*&&^%$^%$%*^%$%#%&^","mychannel2"]}' >&log.txt
 	else
-		peer chaincode invoke -o orderer0:7050  --tls $CORE_PEER_TLS_ENABLED --cafile $ORDERER_CA -C $CHANNEL_NAME$counter -n mycc05 -c '{"Args":["invoke","mycc","sum","mychannel2"]}' >&log.txt
+		peer chaincode invoke -o orderer0:7050  --tls $CORE_PEER_TLS_ENABLED --cafile $ORDERER_CA -C $CHANNEL_NAME$counter -n mycc05 -c '{"Args":["put","mycc","!@#$%^&*()_+~!@#^(*&&^%$^%$%*^%$%#%&^","mychannel2"]}' >&log.txt
 	fi
   else 
         if [ -z "$CORE_PEER_TLS_ENABLED" -o "$CORE_PEER_TLS_ENABLED" = "false" ]; then
-		peer chaincode invoke -o orderer0:7050 -C $CHANNEL_NAME$counter -n mycc05 -c '{"Args":["invoke","mycc","sum","mychannel1"]}' >&log.txt
+		peer chaincode invoke -o orderer0:7050 -C $CHANNEL_NAME$counter -n mycc05 -c '{"Args":["put","mycc","!@#$%^&*()_+~!@#^(*&&^%$^%$%*^%$%#%&^","mychannel1"]}' >&log.txt
 	else
-		peer chaincode invoke -o orderer0:7050  --tls $CORE_PEER_TLS_ENABLED --cafile $ORDERER_CA -C $CHANNEL_NAME$counter -n mycc05 -c '{"Args":["invoke","mycc","sum","mychannel1"]}' >&log.txt
+		peer chaincode invoke -o orderer0:7050  --tls $CORE_PEER_TLS_ENABLED --cafile $ORDERER_CA -C $CHANNEL_NAME$counter -n mycc05 -c '{"Args":["put","mycc","!@#$%^&*()_+~!@#^(*&&^%$^%$%*^%$%#%&^","mychannel1"]}' >&log.txt
 	fi
   fi
 	res=$?
@@ -230,6 +258,7 @@ chaincode05Invoke () {
  done
 }
 
+disableGossip
 ## Create channel
 createChannel
 
@@ -239,28 +268,32 @@ joinChannel
 
 ## Install chaincode on Peer0/Org0 and Peer2/Org1
 installChaincode 0
+installChaincode 1
 installChaincode 2
+installChaincode 3
 
 #Instantiate chaincode on Peer2/Org1
 echo "Instantiating chaincode on Peer2/Org1 ..."
 instantiateChaincode 2
 
-#Query on chaincode on Peer0/Org0
-chaincodeQuery 0 100
+sleep 20
 
 #Invoke on chaincode on Peer0/Org0
 echo "send Invoke transaction on Peer0/Org0 ..."
 chaincodeInvoke 0
 
+#Query on chaincode on Peer0/Org0
+chaincodeQuery 1 "1234567890abcdefghijklmnopqrstuvwxyz" "ABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890"
+
 ## Install chaincode on Peer3/Org1
-installChaincode 3
+#installChaincode 3
 
 #Query on chaincode on Peer3/Org1, check if the result is 90
-chaincodeQuery 3 90
+#chaincodeQuery 3 "1234567890abcdefghijklmnopqrstuvwxyz"
 
 
 chaincode05Invoke 0
-chaincode05Query 3 300
+chaincode05Query 3
 
 echo
 echo "===================== All GOOD, End-2-End execution completed ===================== "

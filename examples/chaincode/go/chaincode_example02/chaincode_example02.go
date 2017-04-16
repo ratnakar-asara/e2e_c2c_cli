@@ -16,184 +16,177 @@ limitations under the License.
 
 package main
 
-//WARNING - this chaincode's ID is hard-coded in chaincode_example04 to illustrate one way of
-//calling chaincode from a chaincode. If this example is modified, chaincode_example04.go has
-//to be modified as well with the new ID of chaincode_example02.
-//chaincode_example05 show's how chaincode ID can be passed in as a parameter instead of
-//hard-coding.
-
 import (
+	"crypto/aes"
+	"crypto/cipher"
+	"crypto/rand"
 	"fmt"
-	"strconv"
+	"io"
 
 	"github.com/hyperledger/fabric/core/chaincode/shim"
 	pb "github.com/hyperledger/fabric/protos/peer"
 )
 
-// SimpleChaincode example simple Chaincode implementation
-type SimpleChaincode struct {
+// cryptoChaincode is allows the following transactions
+//    "put", "key", val - returns "OK" on success
+//    "get", "key" - returns val stored previously
+type cryptoChaincode struct {
 }
 
-func (t *SimpleChaincode) Init(stub shim.ChaincodeStubInterface) pb.Response {
-	fmt.Println("ex02 Init")
-	_, args := stub.GetFunctionAndParameters()
-	var A, B string    // Entities
-	var Aval, Bval int // Asset holdings
-	var err error
+const (
+	AESKeyLength = 32 // AESKeyLength is the default AES key length
+	NonceSize    = 24 // NonceSize is the default NonceSize
+)
 
-	if len(args) != 4 {
-		return shim.Error("Incorrect number of arguments. Expecting 4")
-	}
+///////////////////////////////////////////////////
+// GetRandomByt es returns len random looking bytes
+///////////////////////////////////////////////////
+func GetRandomBytes(len int) ([]byte, error) {
+	//TODO: Should we fix the length ?
+	key := make([]byte, len)
 
-	// Initialize the chaincode
-	A = args[0]
-	Aval, err = strconv.Atoi(args[1])
+	_, err := rand.Read(key)
 	if err != nil {
-		return shim.Error("Expecting integer value for asset holding")
-	}
-	B = args[2]
-	Bval, err = strconv.Atoi(args[3])
-	if err != nil {
-		return shim.Error("Expecting integer value for asset holding")
-	}
-	fmt.Printf("Aval = %d, Bval = %d\n", Aval, Bval)
-
-	// Write the state to the ledger
-	err = stub.PutState(A, []byte(strconv.Itoa(Aval)))
-	if err != nil {
-		return shim.Error(err.Error())
+		return nil, err
 	}
 
-	err = stub.PutState(B, []byte(strconv.Itoa(Bval)))
-	if err != nil {
-		return shim.Error(err.Error())
-	}
+	return key, nil
+}
 
+////////////////////////////////////////////////////////////
+// GenAESKey returns a random AES key of length AESKeyLength
+// 3 Functions to support Encryption and Decryption
+// GENAESKey() - Generates AES symmetric key
+func (t *cryptoChaincode) GenAESKey() ([]byte, error) {
+	return GetRandomBytes(AESKeyLength)
+}
+
+//Init implements chaincode's Init interface
+func (t *cryptoChaincode) Init(stub shim.ChaincodeStubInterface) pb.Response {
+	fmt.Printf("Instantiate chaincode \n\n")
 	return shim.Success(nil)
 }
 
-func (t *SimpleChaincode) Invoke(stub shim.ChaincodeStubInterface) pb.Response {
-	fmt.Println("ex02 Invoke")
-	function, args := stub.GetFunctionAndParameters()
-	if function == "invoke" {
-		// Make payment of X units from A to B
-		return t.invoke(stub, args)
-	} else if function == "delete" {
-		// Deletes an entity from its state
-		return t.delete(stub, args)
-	} else if function == "query" {
-		// the old "Query" is now implemtned in invoke
-		return t.query(stub, args)
-	}
+//Invoke implements chaincode's Invoke interface
+func (t *cryptoChaincode) Invoke(stub shim.ChaincodeStubInterface) pb.Response {
+	/*function, args := stub.GetFunctionAndParameters()
+	if function != "invoke" {
+		return shim.Error("Unknown function call")
+	}*/
 
-	return shim.Error("Invalid invoke function name. Expecting \"invoke\" \"delete\" \"query\"")
+	method, args := stub.GetFunctionAndParameters()
+	//method := args[0]
+	if method == "put" {
+		if len(args) < 2 {
+			return shim.Error(fmt.Sprintf("invalid number of args for put %d", len(args)))
+		}
+		fmt.Printf("Invoke chaincode\n")
+		return t.writeTransaction(stub, args)
+	} else if method == "get" {
+		if len(args) < 1 {
+			return shim.Error(fmt.Sprintf("invalid number of args %d", len(args)))
+	        }
+		fmt.Printf("Query Chaincode\n")
+		return t.readTransaction(stub, args)
+	}
+	return shim.Error(fmt.Sprintf("unknown function %s", method))
 }
 
-// Transaction makes payment of X units from A to B
-func (t *SimpleChaincode) invoke(stub shim.ChaincodeStubInterface, args []string) pb.Response {
-	var A, B string    // Entities
-	var Aval, Bval int // Asset holdings
-	var X int          // Transaction value
-	var err error
+func (t *cryptoChaincode) encryptAndDecrypt(arg string) []byte {
+	AES_key, _ := t.GenAESKey()
+	AES_enc := t.Encrypt(AES_key, []byte(arg))
 
-	if len(args) != 3 {
-		return shim.Error("Incorrect number of arguments. Expecting 3")
+	value := t.Decrypt(AES_key, AES_enc)
+	return value
+}
+
+func (t *cryptoChaincode) Encrypt(key []byte, byteArray []byte) []byte {
+
+	// Create the AES cipher
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		panic(err)
 	}
 
-	A = args[0]
-	B = args[1]
+	// Empty array of 16 + byteArray length
+	// Include the IV at the beginning
+	ciphertext := make([]byte, aes.BlockSize+len(byteArray))
 
+	// Slice of first 16 bytes
+	iv := ciphertext[:aes.BlockSize]
+
+	// Write 16 rand bytes to fill iv
+	if _, err := io.ReadFull(rand.Reader, iv); err != nil {
+		panic(err)
+	}
+
+	// Return an encrypted stream
+	stream := cipher.NewCFBEncrypter(block, iv)
+
+	// Encrypt bytes from byteArray to ciphertext
+	stream.XORKeyStream(ciphertext[aes.BlockSize:], byteArray)
+
+	return ciphertext
+}
+
+func (t *cryptoChaincode) Decrypt(key []byte, ciphertext []byte) []byte {
+
+	// Create the AES cipher
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		panic(err)
+	}
+
+	// Before even testing the decryption,
+	// if the text is too small, then it is incorrect
+	if len(ciphertext) < aes.BlockSize {
+		panic("Text is too short")
+	}
+
+	// Get the 16 byte IV
+	iv := ciphertext[:aes.BlockSize]
+
+	// Remove the IV from the ciphertext
+	ciphertext = ciphertext[aes.BlockSize:]
+
+	// Return a decrypted stream
+	stream := cipher.NewCFBDecrypter(block, iv)
+
+	// Decrypt bytes from ciphertext
+	stream.XORKeyStream(ciphertext, ciphertext)
+
+	return ciphertext
+}
+
+func (t *cryptoChaincode) writeTransaction(stub shim.ChaincodeStubInterface, args []string) pb.Response {
+	fmt.Printf("----- Write Transaction -----\n")
+	//Before save the state Encrypt and Decrypt the data
+	//This is to make the chaincode spend more time executing the extra operations.
+	cryptoArg := t.encryptAndDecrypt(args[1])
+	err := stub.PutState(args[0], cryptoArg)
+	fmt.Printf("%s ==> \"%s\" \n\n", args[0], args[1])
+	if err != nil {
+		return shim.Error(err.Error())
+	}
+	return shim.Success([]byte("OK"))
+}
+
+func (t *cryptoChaincode) readTransaction(stub shim.ChaincodeStubInterface, args []string) pb.Response {
+	fmt.Printf("------ Read Transaction -----\n")
 	// Get the state from the ledger
-	// TODO: will be nice to have a GetAllState call to ledger
-	Avalbytes, err := stub.GetState(A)
-	if err != nil {
-		return shim.Error("Failed to get state")
-	}
-	if Avalbytes == nil {
-		return shim.Error("Entity not found")
-	}
-	Aval, _ = strconv.Atoi(string(Avalbytes))
-
-	Bvalbytes, err := stub.GetState(B)
-	if err != nil {
-		return shim.Error("Failed to get state")
-	}
-	if Bvalbytes == nil {
-		return shim.Error("Entity not found")
-	}
-	Bval, _ = strconv.Atoi(string(Bvalbytes))
-
-	// Perform the execution
-	X, err = strconv.Atoi(args[2])
-	if err != nil {
-		return shim.Error("Invalid transaction amount, expecting a integer value")
-	}
-	Aval = Aval - X
-	Bval = Bval + X
-	fmt.Printf("Aval = %d, Bval = %d\n", Aval, Bval)
-
-	// Write the state back to the ledger
-	err = stub.PutState(A, []byte(strconv.Itoa(Aval)))
+	val, err := stub.GetState(args[0])
+	fmt.Printf("%s ==> \"%s\" \n\n", args[0], val)
 	if err != nil {
 		return shim.Error(err.Error())
 	}
-
-	err = stub.PutState(B, []byte(strconv.Itoa(Bval)))
-	if err != nil {
-		return shim.Error(err.Error())
-	}
-
-	return shim.Success(nil)
-}
-
-// Deletes an entity from state
-func (t *SimpleChaincode) delete(stub shim.ChaincodeStubInterface, args []string) pb.Response {
-	if len(args) != 1 {
-		return shim.Error("Incorrect number of arguments. Expecting 1")
-	}
-
-	A := args[0]
-
-	// Delete the key from the state in ledger
-	err := stub.DelState(A)
-	if err != nil {
-		return shim.Error("Failed to delete state")
-	}
-
-	return shim.Success(nil)
-}
-
-// query callback representing the query of a chaincode
-func (t *SimpleChaincode) query(stub shim.ChaincodeStubInterface, args []string) pb.Response {
-	var A string // Entities
-	var err error
-
-	if len(args) != 1 {
-		return shim.Error("Incorrect number of arguments. Expecting name of the person to query")
-	}
-
-	A = args[0]
-
-	// Get the state from the ledger
-	Avalbytes, err := stub.GetState(A)
-	if err != nil {
-		jsonResp := "{\"Error\":\"Failed to get state for " + A + "\"}"
-		return shim.Error(jsonResp)
-	}
-
-	if Avalbytes == nil {
-		jsonResp := "{\"Error\":\"Nil amount for " + A + "\"}"
-		return shim.Error(jsonResp)
-	}
-
-	jsonResp := "{\"Name\":\"" + A + "\",\"Amount\":\"" + string(Avalbytes) + "\"}"
-	fmt.Printf("Query Response:%s\n", jsonResp)
-	return shim.Success(Avalbytes)
+	fmt.Printf("Query Response:%s\n", val)
+	return shim.Success(val)
 }
 
 func main() {
-	err := shim.Start(new(SimpleChaincode))
+
+	err := shim.Start(new(cryptoChaincode))
 	if err != nil {
-		fmt.Printf("Error starting Simple chaincode: %s", err)
+		fmt.Printf("Error starting New key per invoke: %s", err)
 	}
 }

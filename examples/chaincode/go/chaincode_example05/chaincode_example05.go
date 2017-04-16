@@ -18,7 +18,6 @@ package main
 
 import (
 	"fmt"
-	"strconv"
 
 	"github.com/hyperledger/fabric/common/util"
 	"github.com/hyperledger/fabric/core/chaincode/shim"
@@ -34,106 +33,57 @@ type SimpleChaincode struct {
 // Init takes two arguments, a string and int. The string will be a key with
 // the int as a value.
 func (t *SimpleChaincode) Init(stub shim.ChaincodeStubInterface) pb.Response {
-	var sum string // Sum of asset holdings across accounts. Initially 0
-	var sumVal int // Sum of holdings
-	var err error
-	_, args := stub.GetFunctionAndParameters()
-	if len(args) != 2 {
-		return shim.Error("Incorrect number of arguments. Expecting 2")
-	}
-
-	// Initialize the chaincode
-	sum = args[0]
-	sumVal, err = strconv.Atoi(args[1])
-	if err != nil {
-		return shim.Error("Expecting integer value for sum")
-	}
-	fmt.Printf("sumVal = %d\n", sumVal)
-
-	// Write the state to the ledger
-	err = stub.PutState(sum, []byte(strconv.Itoa(sumVal)))
-	if err != nil {
-		return shim.Error(err.Error())
-	}
-
+	fmt.Printf("\n============ Chaincode 2 INIT ================")
 	return shim.Success(nil)
 }
 
 // Invoke queries another chaincode and updates its own state
 func (t *SimpleChaincode) invoke(stub shim.ChaincodeStubInterface, args []string) pb.Response {
 	fmt.Printf("================ Invoke on chaincode 05\n")
-	var sum string             // Sum entity
-	var Aval, Bval, sumVal int // value of sum entity - to be computed
-	var err error
-
-	if len(args) != 3 {
-		return shim.Error("Incorrect number of arguments. Expecting 3")
+	if len(args) != 2 {
+		return shim.Error("Incorrect number of arguments. Expecting 2")
 	}
 
-	chaincodeURL := args[0] // Expecting "github.com/hyperledger/fabric/core/example/chaincode/chaincode_example02"
-	sum = args[1]
-        channelName :=  args[2]
+	chaincodeURL := args[0]
+	val1 := args[1]
+	val2 := args[2]
+        channelName :=  args[3]
 	fmt.Printf("Channel Name is %s\n", channelName)
-	// Query chaincode_example02
-	f := "query"
-	queryArgs := util.ToChaincodeArgs(f, "a")
-	response := stub.InvokeChaincode(chaincodeURL, queryArgs, channelName)
+
+	// Invoke on chaincode_example02
+	f := "put"
+	invokeArgs := util.ToChaincodeArgs(f, "a", val1)
+	response := stub.InvokeChaincode(chaincodeURL, invokeArgs, channelName)
 	if response.Status != shim.OK {
 		errStr := fmt.Sprintf("Failed to query chaincode. Got error: %s", response.Payload)
 		fmt.Printf(errStr)
 		return shim.Error(errStr)
 	}
-	Aval, err = strconv.Atoi(string(response.Payload))
-	if err != nil {
-		errStr := fmt.Sprintf("Error retrieving state from ledger for queried chaincode: %s", err.Error())
-		fmt.Printf(errStr)
-		return shim.Error(errStr)
-	}
+	fmt.Printf("Invoke response %s\n", string(response.Payload))
 
-	queryArgs = util.ToChaincodeArgs(f, "b")
-	response = stub.InvokeChaincode(chaincodeURL, queryArgs, channelName)
+	invokeArgs = util.ToChaincodeArgs(f, "b", val2)
+	response = stub.InvokeChaincode(chaincodeURL, invokeArgs, channelName)
 	if response.Status != shim.OK {
 		errStr := fmt.Sprintf("Failed to query chaincode. Got error: %s", response.Payload)
 		fmt.Printf(errStr)
 		return shim.Error(errStr)
 	}
-	Bval, err = strconv.Atoi(string(response.Payload))
-	if err != nil {
-		errStr := fmt.Sprintf("Error retrieving state from ledger for queried chaincode: %s", err.Error())
-		fmt.Printf(errStr)
-		return shim.Error(errStr)
-	}
-
-	// Compute sum
-	sumVal = Aval + Bval
-
-	// Write sumVal back to the ledger
-	err = stub.PutState(sum, []byte(strconv.Itoa(sumVal)))
-	if err != nil {
-		return shim.Error(err.Error())
-	}
-
-	fmt.Printf("Invoke chaincode successful. Got sum %d\n", sumVal)
-	return shim.Success([]byte(strconv.Itoa(sumVal)))
+	fmt.Printf("Invoke response %s\n", string(response.Payload))
+	return shim.Success([]byte("OK"))
 }
 
 func (t *SimpleChaincode) query(stub shim.ChaincodeStubInterface, args []string) pb.Response {
 	fmt.Printf("================ Query on chaincode 05\n")
-	var sum string             // Sum entity
-	var Aval, Bval, sumVal int // value of sum entity - to be computed
-	var err error
-
-	if len(args) != 3 {
-		return shim.Error("Incorrect number of arguments. Expecting 3")
+	if len(args) != 2 {
+		return shim.Error("Incorrect number of arguments. Expecting 2")
 	}
 
 	chaincodeURL := args[0]
-	sum = args[1]
-        channelName :=  args[2]
+        channelName :=  args[1]
 	fmt.Printf("Channel Name is %s\n", channelName)
 
 	// Query chaincode_example02
-	f := "query"
+	f := "get"
 	queryArgs := util.ToChaincodeArgs(f, "a")
 	response := stub.InvokeChaincode(chaincodeURL, queryArgs, channelName)
 	if response.Status != shim.OK {
@@ -141,12 +91,8 @@ func (t *SimpleChaincode) query(stub shim.ChaincodeStubInterface, args []string)
 		fmt.Printf(errStr)
 		return shim.Error(errStr)
 	}
-	Aval, err = strconv.Atoi(string(response.Payload))
-	if err != nil {
-		errStr := fmt.Sprintf("Error retrieving state from ledger for queried chaincode: %s", err.Error())
-		fmt.Printf(errStr)
-		return shim.Error(errStr)
-	}
+        val1 := string(response.Payload)
+	fmt.Printf(val1)
 
 	queryArgs = util.ToChaincodeArgs(f, "b")
 	response = stub.InvokeChaincode(chaincodeURL, queryArgs, channelName)
@@ -155,20 +101,13 @@ func (t *SimpleChaincode) query(stub shim.ChaincodeStubInterface, args []string)
 		fmt.Printf(errStr)
 		return shim.Error(errStr)
 	}
-	Bval, err = strconv.Atoi(string(response.Payload))
-	if err != nil {
-		errStr := fmt.Sprintf("Error retrieving state from ledger for queried chaincode: %s", err.Error())
-		fmt.Printf(errStr)
-		return shim.Error(errStr)
-	}
+        val2 := string(response.Payload)
+	fmt.Printf(val2)
 
-	// Compute sum
-	sumVal = Aval + Bval
-
-	fmt.Printf("Query chaincode successful. Got sum %d\n", sumVal)
-	jsonResp := "{\"Name\":\"" + sum + "\",\"Value\":\"" + strconv.Itoa(sumVal) + "\"}"
+	fmt.Printf("Query chaincode successful. \n")
+	jsonResp := "{\"Val1\":\"" + val1 + "\",\"Val2\":\"" + val2 + "\"}"
 	fmt.Printf("Query Response:%s\n", jsonResp)
-	return shim.Success([]byte(strconv.Itoa(sumVal)))
+	return shim.Success([]byte(jsonResp))
 }
 
 func (t *SimpleChaincode) Invoke(stub shim.ChaincodeStubInterface) pb.Response {
